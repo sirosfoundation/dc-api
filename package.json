@@ -1,0 +1,37 @@
+{
+  "name": "@sirosfoundation/dc-api",
+  "version": "0.1.0",
+  "description": "W3C Digital Credentials API utilities for OpenID4VP — detection, protocol constants, and native DC API invocation",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "vitest": "^3.2.0"
+  },
+  "license": "BSD-2-Clause",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sirosfoundation/dc-api.git"
+  },
+  "keywords": [
+    "digital-credentials",
+    "dc-api",
+    "openid4vp",
+    "verifiable-credentials",
+    "w3c"
+  ]
+}
