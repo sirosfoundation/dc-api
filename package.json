@@ -1,6 +1,6 @@
 {
   "name": "@sirosfoundation/dc-api",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "W3C Digital Credentials API utilities for OpenID4VP — detection, protocol constants, and native DC API invocation",
   "type": "module",
   "main": "dist/index.js",

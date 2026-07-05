@@ -19,7 +19,13 @@
  *   - OpenID4VP (DC API profile): https://openid.net/specs/openid-4-verifiable-presentations-1_0.html
  */
 
-export { OID4VP_PROTOCOLS, type OID4VPProtocol } from './protocols.js';
+export {
+	OID4VP_PROTOCOLS,
+	OID4VP_ALL_PROTOCOLS,
+	OID4VP_SPEC_PROTOCOLS,
+	isOID4VPProtocol,
+	type OID4VPProtocol,
+} from './protocols.js';
 export {
 	isDCAPIAvailable,
 	isProtocolAllowed,
