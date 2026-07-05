@@ -19,7 +19,7 @@
   ],
   "scripts": {
     "build": "tsc && npm run bundle",
-    "bundle": "esbuild src/index.ts --bundle --format=esm --outfile=dist/dc-api.bundle.js",
+    "bundle": "esbuild src/index.ts --bundle --format=esm --target=es2022 --outfile=dist/dc-api.bundle.js && sed -i 's/^var /const /g' dist/dc-api.bundle.js",
     "prepare": "npm run build",
     "test": "vitest run",
     "test:watch": "vitest",
