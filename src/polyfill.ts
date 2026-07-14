@@ -358,7 +358,7 @@ function _buildUrl(
 	// Unsigned request: individual params
 	for (const [key, value] of Object.entries(data)) {
 		if (value === undefined || value === null) continue;
-		const serialized = (typeof value === 'object' && value !== null)
+		const serialized = typeof value === 'object'
 			? JSON.stringify(value)
 			: String(value);
 		url.searchParams.set(key, serialized);
