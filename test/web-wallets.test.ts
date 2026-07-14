@@ -8,7 +8,7 @@ import {
 	isWebWalletsEnabled,
 	selectWallet,
 } from '../src/web-wallets.js';
-import { getRegisteredWallets, unregisterWallet, installPolyfill, uninstallPolyfill } from '../src/polyfill.js';
+import { getRegisteredWallets, unregisterWallet, uninstallPolyfill } from '../src/polyfill.js';
 
 beforeEach(() => {
 	// Ensure clean navigator.credentials
