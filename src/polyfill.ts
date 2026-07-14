@@ -41,12 +41,12 @@
  *   (for unsigned: individual OID4VP params instead of request=)
  *
  *   The wallet must:
- *   1. postMessage({ type: 'DC_POLYFILL_READY', requestId }) to window.opener
- *   2. Wait for { type: 'DC_POLYFILL_REQUEST_ACK', requestId } reply
+ *   1. postMessage({ type: 'WC_ORIGIN_CHECK', requestId }) to window.opener
+ *   2. Wait for { type: 'WC_ORIGIN_ACK', requestId } reply
  *   3. Validate opener origin matches client_id from URL
  *   4. Process the request, obtain holder consent
- *   5. postMessage({ type: 'DC_POLYFILL_RESPONSE', requestId, response: {...} })
- *      or { type: 'DC_POLYFILL_RESPONSE', requestId, error: "user_cancelled" }
+ *   5. postMessage({ type: 'WC_WALLET_RESPONSE', requestId, response: {...} })
+ *      or { type: 'WC_WALLET_RESPONSE', requestId, error: "user_cancelled" }
  */
 
 // DigitalCredential is declared in dc-api.d.ts as potentially undefined.
@@ -310,13 +310,13 @@ async function _invokeWalletPopup(
 			if (event.source !== popup) return;
 
 			// Wallet ready handshake
-			if (event.data?.type === 'DC_POLYFILL_READY' && event.data.requestId === requestId) {
-				popup!.postMessage({ type: 'DC_POLYFILL_REQUEST_ACK', requestId }, walletOrigin);
+			if (event.data?.type === 'WC_ORIGIN_CHECK' && event.data.requestId === requestId) {
+				popup!.postMessage({ type: 'WC_ORIGIN_ACK', requestId }, walletOrigin);
 				return;
 			}
 
 			// Wallet response
-			if (event.data?.type === 'DC_POLYFILL_RESPONSE' && event.data.requestId === requestId) {
+			if (event.data?.type === 'WC_WALLET_RESPONSE' && event.data.requestId === requestId) {
 				if (event.origin !== walletOrigin) return;
 				cleanup();
 				if (event.data.error) {
