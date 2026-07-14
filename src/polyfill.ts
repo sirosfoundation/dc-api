@@ -63,6 +63,8 @@ export interface RegisteredWallet {
 	url: string;
 	/** Protocol identifiers this wallet supports */
 	protocols: string[];
+	/** Optional icon URL */
+	icon?: string;
 }
 
 export interface PolyfillOptions {
