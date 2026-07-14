@@ -170,7 +170,8 @@ function _polyfillProtocols(): Set<string> {
 }
 
 function _shimUserAgentAllowsProtocol(): void {
-	if (DigitalCredential === undefined) {
+	// typeof is required: DigitalCredential may not exist as a runtime binding
+	if (typeof DigitalCredential === 'undefined') { // NOSONAR
 		// No DC API at all — define minimal global
 		(globalThis as any).DigitalCredential = {
 			userAgentAllowsProtocol: (protocol: string) => _polyfillProtocols().has(protocol),
