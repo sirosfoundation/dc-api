@@ -87,6 +87,7 @@ const _wallets: RegisteredWallet[] = [];
 let _installed = false;
 let _originalGet: typeof navigator.credentials.get | null = null;
 let _originalUAP: ((protocol: string) => boolean) | null = null;
+let _polyfillCreatedDC = false;
 let _opts: Required<PolyfillOptions> = {
 	timeoutMs: 300000,
 	preferNative: true,
@@ -175,6 +176,7 @@ function _shimUserAgentAllowsProtocol(): void {
 			userAgentAllowsProtocol: (protocol: string) => _polyfillProtocols().has(protocol),
 		};
 		_originalUAP = null;
+		_polyfillCreatedDC = true;
 	} else {
 		// DC API exists — wrap its userAgentAllowsProtocol
 		_originalUAP = (DigitalCredential as any).userAgentAllowsProtocol ?? null;
@@ -182,11 +184,16 @@ function _shimUserAgentAllowsProtocol(): void {
 			if (_polyfillProtocols().has(protocol)) return true;
 			return _originalUAP?.(protocol) ?? false;
 		};
+		_polyfillCreatedDC = false;
 	}
 }
 
 function _restoreUserAgentAllowsProtocol(): void {
-	if (_originalUAP) {
+	if (_polyfillCreatedDC) {
+		// We created the global — remove it entirely
+		delete (globalThis as any).DigitalCredential;
+		_polyfillCreatedDC = false;
+	} else if (_originalUAP) {
 		(DigitalCredential as any).userAgentAllowsProtocol = _originalUAP;
 		_originalUAP = null;
 	}
@@ -321,6 +328,7 @@ async function _invokeWalletPopup(
 			clearTimeout(timeout);
 			clearInterval(closePoll);
 			window.removeEventListener('message', onMessage);
+			try { popup?.close(); } catch { /* popup may already be closed */ }
 		}
 
 		window.addEventListener('message', onMessage);
@@ -340,9 +348,9 @@ function _buildUrl(
 	const data = request.data as Record<string, unknown> | undefined;
 	if (!data) return url.toString();
 
-	// Signed request (JAR): just the JWT
+	// Signed request (JAR): pass via URL fragment to avoid server logs / Referer leakage
 	if (typeof data.request === 'string') {
-		url.searchParams.set('request', data.request);
+		url.hash = data.request;
 		return url.toString();
 	}
 
