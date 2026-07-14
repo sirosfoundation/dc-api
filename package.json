@@ -23,6 +23,9 @@
     "./web-wallets": {
       "import": "./dist/web-wallets.js",
       "types": "./dist/web-wallets.d.ts"
+    },
+    "./web-wallets/bundle": {
+      "import": "./dist/dc-api-web-wallets.bundle.js"
     }
   },
   "files": [

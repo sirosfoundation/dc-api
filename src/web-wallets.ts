@@ -16,16 +16,15 @@
  *   import { enableWebWallets } from '@sirosfoundation/dc-api/web-wallets';
  *
  *   installPolyfill();
- *   enableWebWallets();  // Exposes window.DigitalWallets for wallet self-registration
+ *   enableWebWallets();
  *
- * Usage (wallet page, loaded as iframe or detected via well-known):
+ * Usage (wallet script):
  *
  *   window.DigitalWallets?.register({
  *     id: 'my-wallet',
  *     name: 'My Wallet',
  *     url: 'https://wallet.example.com/dc-api',
- *     protocols: ['openid4vp-v1-signed', 'openid4vp-v1-unsigned'],
- *     icon: 'https://wallet.example.com/icon.svg',
+ *     protocols: ['openid4vp-v1-signed'],
  *   });
  *
  * Compatibility with wallet-companion:
@@ -35,6 +34,14 @@
 
 import { registerWallet, unregisterWallet, getRegisteredWallets, type RegisteredWallet } from './polyfill.js';
 
+// ─── Global type augmentation ────────────────────────────────────────────────
+
+declare global {
+	interface Window {
+		DigitalWallets?: DigitalWalletsAPI;
+	}
+}
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface WebWalletDescriptor {
@@ -42,16 +49,16 @@ export interface WebWalletDescriptor {
 	id: string;
 	/** Human-readable name shown in wallet selector */
 	name: string;
-	/** URL to open for credential requests (popup target) */
+	/** URL to open for credential requests (must be https://) */
 	url: string;
 	/** Protocol identifiers this wallet supports */
 	protocols: string[];
-	/** Optional icon URL (displayed in selector) */
+	/** Optional icon URL (displayed in selector, must be https://) */
 	icon?: string;
 }
 
 export interface DigitalWalletsAPI {
-	/** Register a web wallet */
+	/** Register a web wallet. URL must use https:// scheme. */
 	register(wallet: WebWalletDescriptor): void;
 	/** Unregister a wallet by ID */
 	unregister(walletId: string): void;
@@ -83,6 +90,20 @@ let _opts: Required<Pick<WebWalletOptions, 'showSelector'>> & Pick<WebWalletOpti
 	showSelector: true,
 };
 
+// ─── URL Validation ──────────────────────────────────────────────────────────
+
+function _validateWalletUrl(url: string): void {
+	let parsed: URL;
+	try {
+		parsed = new URL(url);
+	} catch {
+		throw new Error(`Invalid wallet URL: ${url}`);
+	}
+	if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+		throw new Error(`Wallet URL must use https: scheme, got ${parsed.protocol}`);
+	}
+}
+
 // ─── Public API ──────────────────────────────────────────────────────────────
 
 /**
@@ -102,6 +123,8 @@ export function enableWebWallets(options?: WebWalletOptions): void {
 
 	const api: DigitalWalletsAPI = {
 		register(wallet: WebWalletDescriptor) {
+			_validateWalletUrl(wallet.url);
+			if (wallet.icon) _validateWalletUrl(wallet.icon);
 			registerWallet(wallet);
 		},
 		unregister(walletId: string) {
@@ -115,11 +138,16 @@ export function enableWebWallets(options?: WebWalletOptions): void {
 		},
 	};
 
-	Object.defineProperty(globalThis, 'DigitalWallets', {
-		value: Object.freeze(api),
-		writable: false,
-		configurable: true,
-	});
+	try {
+		Object.defineProperty(globalThis, 'DigitalWallets', {
+			value: Object.freeze(api),
+			writable: false,
+			configurable: true,
+		});
+	} catch {
+		// Property already exists and is non-configurable — skip silently
+		return;
+	}
 
 	_enabled = true;
 }
@@ -129,7 +157,12 @@ export function enableWebWallets(options?: WebWalletOptions): void {
  */
 export function disableWebWallets(): void {
 	if (!_enabled) return;
-	delete (globalThis as any).DigitalWallets;
+	try {
+		delete (globalThis as any).DigitalWallets;
+	} catch {
+		// Non-configurable — can't delete
+	}
+	_opts = { showSelector: true };
 	_enabled = false;
 }
 
@@ -140,12 +173,18 @@ export function isWebWalletsEnabled(): boolean {
 	return _enabled;
 }
 
-// ─── Wallet Selector (minimal built-in UI) ──────────────────────────────────
+// ─── Wallet Selector ─────────────────────────────────────────────────────────
 
 /**
- * Show a wallet selector dialog. Returns the selected wallet or null if cancelled.
+ * Select a wallet from a list of candidates for the given protocol.
  *
- * Used by the polyfill when multiple wallets match a request and showSelector is true.
+ * Behavior depends on WebWalletOptions:
+ * - If customSelector is provided, delegates to it.
+ * - If showSelector is false or only one wallet matches, returns first match.
+ * - Otherwise shows the built-in modal selector.
+ *
+ * Exported for use by verifier integration code that wants to present
+ * a wallet choice UI before calling the polyfill.
  */
 export async function selectWallet(
 	wallets: RegisteredWallet[],
@@ -155,8 +194,8 @@ export async function selectWallet(
 		return _opts.customSelector(wallets, protocol);
 	}
 
-	if (wallets.length === 1) {
-		return wallets[0];
+	if (!_opts.showSelector || wallets.length <= 1) {
+		return wallets[0] ?? null;
 	}
 
 	return _showBuiltinSelector(wallets);
@@ -164,10 +203,19 @@ export async function selectWallet(
 
 /**
  * Minimal modal wallet selector — no framework dependencies.
- * Creates a dialog element with wallet buttons.
+ * Uses HTML <dialog> for accessibility.
  */
 function _showBuiltinSelector(wallets: RegisteredWallet[]): Promise<RegisteredWallet | null> {
 	return new Promise((resolve) => {
+		let resolved = false;
+
+		function finish(result: RegisteredWallet | null) {
+			if (resolved) return;
+			resolved = true;
+			dialog.remove();
+			resolve(result);
+		}
+
 		const dialog = document.createElement('dialog');
 		dialog.setAttribute('aria-label', 'Select a wallet');
 		dialog.style.cssText = `
@@ -210,7 +258,7 @@ function _showBuiltinSelector(wallets: RegisteredWallet[]): Promise<RegisteredWa
 			label.textContent = wallet.name;
 			btn.appendChild(label);
 
-			btn.onclick = () => { cleanup(); resolve(wallet); };
+			btn.onclick = () => finish(wallet);
 			list.appendChild(btn);
 		}
 
@@ -224,15 +272,11 @@ function _showBuiltinSelector(wallets: RegisteredWallet[]): Promise<RegisteredWa
 			background: transparent; cursor: pointer; color: #666;
 			font-size: 14px; width: 100%;
 		`;
-		cancelBtn.onclick = () => { cleanup(); resolve(null); };
+		cancelBtn.onclick = () => finish(null);
 		dialog.appendChild(cancelBtn);
 
-		dialog.onclose = () => { cleanup(); resolve(null); };
-
-		function cleanup() {
-			dialog.close();
-			dialog.remove();
-		}
+		// ESC key or backdrop click closes dialog
+		dialog.onclose = () => finish(null);
 
 		document.body.appendChild(dialog);
 		dialog.showModal();
