@@ -3,6 +3,7 @@
 [![npm version](https://img.shields.io/npm/v/@sirosfoundation/dc-api)](https://www.npmjs.com/package/@sirosfoundation/dc-api)
 [![CI](https://github.com/sirosfoundation/dc-api/actions/workflows/ci.yml/badge.svg)](https://github.com/sirosfoundation/dc-api/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/sirosfoundation/dc-api/actions/workflows/codeql.yml/badge.svg)](https://github.com/sirosfoundation/dc-api/actions/workflows/codeql.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/sirosfoundation/dc-api/badge)](https://scorecard.dev/viewer/?uri=github.com/sirosfoundation/dc-api)
 [![License: BSD-2-Clause](https://img.shields.io/badge/License-BSD--2--Clause-blue.svg)](https://opensource.org/licenses/BSD-2-Clause)
 
 W3C Digital Credentials API toolkit for OpenID4VP.
