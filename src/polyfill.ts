@@ -49,10 +49,8 @@
  *      or { type: 'DC_POLYFILL_RESPONSE', requestId, error: "user_cancelled" }
  */
 
-import { OID4VP_SPEC_PROTOCOLS } from './protocols.js';
-
-// Access DigitalCredential via globalThis to satisfy TypeScript
-declare const globalThis: typeof global & { DigitalCredential?: any };
+// DigitalCredential is declared in dc-api.d.ts as potentially undefined.
+// The polyfill may define it at runtime if missing.
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -171,7 +169,7 @@ function _polyfillProtocols(): Set<string> {
 }
 
 function _shimUserAgentAllowsProtocol(): void {
-	if (typeof globalThis.DigitalCredential === 'undefined') {
+	if (DigitalCredential === undefined) {
 		// No DC API at all — define minimal global
 		(globalThis as any).DigitalCredential = {
 			userAgentAllowsProtocol: (protocol: string) => _polyfillProtocols().has(protocol),
@@ -179,8 +177,8 @@ function _shimUserAgentAllowsProtocol(): void {
 		_originalUAP = null;
 	} else {
 		// DC API exists — wrap its userAgentAllowsProtocol
-		_originalUAP = (globalThis.DigitalCredential as any).userAgentAllowsProtocol ?? null;
-		(globalThis.DigitalCredential as any).userAgentAllowsProtocol = (protocol: string) => {
+		_originalUAP = (DigitalCredential as any).userAgentAllowsProtocol ?? null;
+		(DigitalCredential as any).userAgentAllowsProtocol = (protocol: string) => {
 			if (_polyfillProtocols().has(protocol)) return true;
 			return _originalUAP?.(protocol) ?? false;
 		};
@@ -189,7 +187,7 @@ function _shimUserAgentAllowsProtocol(): void {
 
 function _restoreUserAgentAllowsProtocol(): void {
 	if (_originalUAP) {
-		(globalThis.DigitalCredential as any).userAgentAllowsProtocol = _originalUAP;
+		(DigitalCredential as any).userAgentAllowsProtocol = _originalUAP;
 		_originalUAP = null;
 	}
 }
@@ -208,21 +206,10 @@ async function _polyfillGet(options?: DigitalOpts): Promise<Credential | null> {
 		return _originalGet!(options);
 	}
 
-	// If preferNative, try native for protocols it supports
+	// If preferNative, try native first
 	if (_opts.preferNative) {
-		const nativeSupported = requests.filter((r) => _nativeSupports(r.protocol));
-		if (nativeSupported.length > 0) {
-			try {
-				const nativeOpts = { ...options, digital: { requests: nativeSupported } };
-				const result = await _originalGet!(nativeOpts);
-				if (result) return result;
-			} catch (err: any) {
-				// NotSupportedError / NotAllowedError with no native wallet → fall through
-				if (err.name !== 'NotSupportedError' && err.name !== 'NotAllowedError') {
-					throw err;
-				}
-			}
-		}
+		const nativeResult = await _tryNative(requests, options);
+		if (nativeResult) return nativeResult;
 	}
 
 	// Polyfill path: find a wallet that handles a requested protocol
@@ -236,6 +223,29 @@ async function _polyfillGet(options?: DigitalOpts): Promise<Credential | null> {
 
 	const response = await _invokeWalletPopup(match.wallet, match.request);
 	return _toCredential(match.request.protocol, response);
+}
+
+/**
+ * Attempt native DC API for protocols it supports.
+ * Returns null if native can't handle or fails gracefully.
+ */
+async function _tryNative(
+	requests: Array<{ protocol: string; data: unknown }>,
+	options: DigitalOpts | undefined,
+): Promise<Credential | null> {
+	const nativeSupported = requests.filter((r) => _nativeSupports(r.protocol));
+	if (nativeSupported.length === 0) return null;
+
+	try {
+		const nativeOpts = { ...options, digital: { requests: nativeSupported } } as CredentialRequestOptions;
+		const result = await _originalGet!(nativeOpts);
+		if (result) return result;
+	} catch (err: any) {
+		if (err.name !== 'NotSupportedError' && err.name !== 'NotAllowedError') {
+			throw err;
+		}
+	}
+	return null;
 }
 
 /**
@@ -339,7 +349,10 @@ function _buildUrl(
 	// Unsigned request: individual params
 	for (const [key, value] of Object.entries(data)) {
 		if (value === undefined || value === null) continue;
-		url.searchParams.set(key, typeof value === 'object' ? JSON.stringify(value) : String(value));
+		const serialized = (typeof value === 'object' && value !== null)
+			? JSON.stringify(value)
+			: String(value);
+		url.searchParams.set(key, serialized);
 	}
 	return url.toString();
 }
