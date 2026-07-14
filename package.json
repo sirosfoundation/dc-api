@@ -19,6 +19,13 @@
     },
     "./polyfill/bundle": {
       "import": "./dist/dc-api-polyfill.bundle.js"
+    },
+    "./web-wallets": {
+      "import": "./dist/web-wallets.js",
+      "types": "./dist/web-wallets.d.ts"
+    },
+    "./web-wallets/bundle": {
+      "import": "./dist/dc-api-web-wallets.bundle.js"
     }
   },
   "files": [
@@ -26,7 +33,7 @@
   ],
   "scripts": {
     "build": "tsc && npm run bundle",
-    "bundle": "esbuild src/index.ts --bundle --format=esm --target=es2022 --outfile=dist/dc-api.bundle.js && esbuild src/polyfill.ts --bundle --format=esm --target=es2022 --outfile=dist/dc-api-polyfill.bundle.js && sed -i 's/^var /const /g' dist/dc-api.bundle.js dist/dc-api-polyfill.bundle.js",
+    "bundle": "esbuild src/index.ts --bundle --format=esm --target=es2022 --outfile=dist/dc-api.bundle.js && esbuild src/polyfill.ts --bundle --format=esm --target=es2022 --outfile=dist/dc-api-polyfill.bundle.js && esbuild src/web-wallets.ts --bundle --format=esm --target=es2022 --outfile=dist/dc-api-web-wallets.bundle.js && sed -i 's/^var /const /g' dist/dc-api.bundle.js dist/dc-api-polyfill.bundle.js dist/dc-api-web-wallets.bundle.js",
     "prepare": "npm run build",
     "test": "vitest run",
     "test:watch": "vitest",
