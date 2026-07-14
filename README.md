@@ -68,23 +68,18 @@ if (protocol) {
 ### Polyfill: OpenID4VP on browsers without native support
 
 ```ts
-import { installPolyfill, registerWallet } from '@sirosfoundation/dc-api/polyfill';
+import { installPolyfill } from '@sirosfoundation/dc-api/polyfill';
 
+// Shims navigator.credentials.get() for openid4vp-v1-signed
 installPolyfill();
-registerWallet({
-  id: 'sirosid',
-  name: 'SIROS ID Wallet',
-  url: 'https://wallet.siros.org/dc-api',
-  protocols: ['openid4vp-v1-signed'],
-});
-
-// Now the standard DC API call works even without native protocol support:
-const credential = await navigator.credentials.get({
-  digital: { requests: [{ protocol: "openid4vp-v1-signed", data: { request: jwt } }] }
-});
 ```
 
-When the native DC API supports the requested protocol, the polyfill delegates transparently. When it doesn't, the polyfill opens the registered wallet in a popup and handles the request/response via `postMessage`.
+After `installPolyfill()`, the standard DC API surface works even when the browser lacks native OpenID4VP protocol support. The polyfill:
+
+1. Delegates to native if the browser supports the requested protocol
+2. Otherwise opens a registered wallet in a popup and relays the request via `postMessage`
+
+Wallets are registered separately — either by the verifier (see below) or via `enableWebWallets()` for self-registration.
 
 ### Web Wallets: Self-registration without an extension
 
