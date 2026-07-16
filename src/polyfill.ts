@@ -88,6 +88,7 @@ export interface PolyfillOptions {
 const _wallets: RegisteredWallet[] = [];
 let _installed = false;
 let _originalGet: typeof navigator.credentials.get | null = null;
+let _originalCreate: typeof navigator.credentials.create | null = null;
 let _originalUAP: ((protocol: string) => boolean) | null = null;
 let _polyfillCreatedDC = false;
 let _opts: Required<PolyfillOptions> = {
@@ -128,6 +129,8 @@ export function getRegisteredWallets(): readonly RegisteredWallet[] {
  * After this call:
  *   - navigator.credentials.get() handles { digital: { requests: [...] } }
  *     for protocols registered via registerWallet()
+ *   - navigator.credentials.create() handles { digital: { requests: [...] } }
+ *     for issuance protocols (openid4vci-v1)
  *   - DigitalCredential.userAgentAllowsProtocol() reports those protocols
  */
 export function installPolyfill(options?: PolyfillOptions): void {
@@ -136,6 +139,9 @@ export function installPolyfill(options?: PolyfillOptions): void {
 
 	_originalGet = navigator.credentials.get.bind(navigator.credentials);
 	navigator.credentials.get = _polyfillGet as typeof navigator.credentials.get;
+
+	_originalCreate = navigator.credentials.create.bind(navigator.credentials);
+	navigator.credentials.create = _polyfillCreate as typeof navigator.credentials.create;
 
 	_shimUserAgentAllowsProtocol();
 	_installed = true;
@@ -149,6 +155,10 @@ export function uninstallPolyfill(): void {
 	if (_originalGet) {
 		navigator.credentials.get = _originalGet;
 		_originalGet = null;
+	}
+	if (_originalCreate) {
+		navigator.credentials.create = _originalCreate;
+		_originalCreate = null;
 	}
 	_restoreUserAgentAllowsProtocol();
 	_installed = false;
@@ -366,6 +376,49 @@ function _buildUrl(
 		url.searchParams.set(key, serialized);
 	}
 	return url.toString();
+}
+
+// ─── navigator.credentials.create() override (issuance) ─────────────────────
+
+type DigitalCreateOpts = CredentialCreationOptions & {
+	digital?: { requests: Array<{ protocol: string; data: unknown }> };
+};
+
+async function _polyfillCreate(options?: DigitalCreateOpts): Promise<Credential | null> {
+	const requests = options?.digital?.requests;
+
+	// Not a digital credential issuance request — pass through
+	if (!requests || requests.length === 0) {
+		return _originalCreate!(options);
+	}
+
+	// If preferNative, try native for protocols it supports
+	if (_opts.preferNative) {
+		const nativeSupported = requests.filter((r) => _nativeSupports(r.protocol));
+		if (nativeSupported.length > 0) {
+			try {
+				const nativeOpts = { ...options, digital: { requests: nativeSupported } } as CredentialCreationOptions;
+				const result = await _originalCreate!(nativeOpts);
+				if (result) return result;
+			} catch (err: any) {
+				if (err.name !== 'NotSupportedError' && err.name !== 'NotAllowedError') {
+					throw err;
+				}
+			}
+		}
+	}
+
+	// Polyfill path: find a wallet that handles the issuance protocol
+	const match = _matchWallet(requests);
+	if (!match) {
+		throw new DOMException(
+			'No digital credential provider supports the requested issuance protocol',
+			'NotAllowedError',
+		);
+	}
+
+	const response = await _invokeWalletPopup(match.wallet, match.request);
+	return _toCredential(match.request.protocol, response);
 }
 
 // ─── Response shaping ────────────────────────────────────────────────────────

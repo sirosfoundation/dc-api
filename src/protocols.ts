@@ -45,3 +45,25 @@ export const OID4VP_ALL_PROTOCOLS: readonly OID4VPProtocol[] = [
 export function isOID4VPProtocol(value: unknown): value is OID4VPProtocol {
 	return OID4VP_ALL_PROTOCOLS.includes(value as OID4VPProtocol);
 }
+
+// ─── OID4VCI (Issuance) ─────────────────────────────────────────────────────
+
+/**
+ * W3C DigitalCredentialIssuanceProtocol enum values for OID4VCI.
+ *
+ * Per the DC API spec (§5, §7.8.3):
+ *   "openid4vci-v1" — OpenID for Verifiable Credential Issuance 1.0
+ */
+export const OID4VCI_PROTOCOLS = {
+	/** OpenID4VCI 1.0 */
+	V1: 'openid4vci-v1',
+} as const;
+
+export type OID4VCIProtocol = (typeof OID4VCI_PROTOCOLS)[keyof typeof OID4VCI_PROTOCOLS];
+
+/**
+ * Check if a string is a known OID4VCI protocol identifier.
+ */
+export function isOID4VCIProtocol(value: unknown): value is OID4VCIProtocol {
+	return value === OID4VCI_PROTOCOLS.V1;
+}

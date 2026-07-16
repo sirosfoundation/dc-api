@@ -11,19 +11,25 @@ import {
 	getRegisteredWallets,
 } from '../src/polyfill.js';
 
-// Save and stub navigator.credentials.get
+// Save and stub navigator.credentials.get and .create
 const originalGet = vi.fn();
+const originalCreate = vi.fn();
 
 beforeEach(() => {
 	// Ensure navigator.credentials exists in happy-dom
 	if (!navigator.credentials) {
 		Object.defineProperty(navigator, 'credentials', {
-			value: { get: originalGet },
+			value: { get: originalGet, create: originalCreate },
 			writable: true,
 			configurable: true,
 		});
 	} else {
 		navigator.credentials.get = originalGet;
+		if (!navigator.credentials.create) {
+			(navigator.credentials as any).create = originalCreate;
+		} else {
+			navigator.credentials.create = originalCreate;
+		}
 	}
 	// @ts-expect-error — ensure clean state
 	delete globalThis.DigitalCredential;
@@ -31,9 +37,10 @@ beforeEach(() => {
 
 afterEach(() => {
 	uninstallPolyfill();
-	// Restore get stub for next test
+	// Restore stubs for next test
 	if (navigator.credentials) {
 		navigator.credentials.get = originalGet;
+		(navigator.credentials as any).create = originalCreate;
 	}
 	// Clear wallet registry
 	for (const w of getRegisteredWallets()) {
