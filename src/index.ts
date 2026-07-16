@@ -24,7 +24,10 @@ export {
 	OID4VP_ALL_PROTOCOLS,
 	OID4VP_SPEC_PROTOCOLS,
 	isOID4VPProtocol,
+	OID4VCI_PROTOCOLS,
+	isOID4VCIProtocol,
 	type OID4VPProtocol,
+	type OID4VCIProtocol,
 } from './protocols.js';
 export {
 	isDCAPIAvailable,
