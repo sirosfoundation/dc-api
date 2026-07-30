@@ -40,6 +40,11 @@ export {
 	type RequestCredentialOptions,
 } from './request.js';
 export {
+	buildRequestData,
+	requestCredentialFromAuthorizationRequestURI,
+	type AuthorizationRequestOptions,
+} from './authorization-request.js';
+export {
 	getUserFriendlyErrorMessage,
 	isUserCancel,
 	isProtocolUnsupported,
