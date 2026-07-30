@@ -85,8 +85,7 @@ describe('requestCredentialFromAuthorizationRequestURI', () => {
 	afterEach(() => {
 		// @ts-expect-error — cleaning up global stub
 		delete globalThis.DigitalCredential;
-		// @ts-expect-error — cleaning up global stub
-		delete globalThis.navigator.credentials;
+		vi.unstubAllGlobals();
 	});
 
 	it('returns null when no protocol is supported (no DC API)', async () => {
@@ -106,10 +105,7 @@ describe('requestCredentialFromAuthorizationRequestURI', () => {
 			protocol: opts.digital.requests[0].protocol,
 			data: { redirect_uri: 'https://example.com/cb' },
 		}));
-		Object.defineProperty(globalThis, 'navigator', {
-			value: { credentials: { get: getMock } },
-			configurable: true,
-		});
+		vi.stubGlobal('navigator', { credentials: { get: getMock } });
 
 		const uri = `openid4vp://cb?client_id=x&request=${encodeURIComponent(jwt)}`;
 		const result = await requestCredentialFromAuthorizationRequestURI(uri);
