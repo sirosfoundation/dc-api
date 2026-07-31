@@ -7,6 +7,7 @@
  *   - Protocol constants (versioned OpenID4VP protocol identifiers)
  *   - DC API feature detection (API availability + protocol support)
  *   - Native DC API invocation with response normalization
+ *   - OpenID4VP response extraction (dc_api/dc_api.jwt response modes)
  *   - Error classification helpers
  *
  * Does NOT include:
@@ -44,6 +45,11 @@ export {
 	requestCredentialFromAuthorizationRequestURI,
 	type AuthorizationRequestOptions,
 } from './authorization-request.js';
+export {
+	extractOID4VPResponse,
+	requestOID4VPPresentation,
+	type OID4VPDCAPIResponse,
+} from './oid4vp-response.js';
 export {
 	getUserFriendlyErrorMessage,
 	isUserCancel,
