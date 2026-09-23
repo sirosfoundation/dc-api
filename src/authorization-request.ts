@@ -17,6 +17,16 @@
 import { getBestProtocol } from './detect.js';
 import { requestCredential, type DigitalCredentialResponse, type RequestCredentialOptions } from './request.js';
 import { OID4VP_PROTOCOLS, type OID4VPProtocol } from './protocols.js';
+import { boundFetch, type BoundFetch, type FetchOptions } from './fetcher.js';
+
+/**
+ * Options for building request data, i.e. the half of an authorization
+ * request that may reach the network.
+ *
+ * `AuthorizationRequestOptions` is assignable to this, so callers pass their
+ * whole options object straight through instead of copying fields across.
+ */
+export type BuildRequestDataOptions = FetchOptions;
 
 export interface AuthorizationRequestOptions extends RequestCredentialOptions {
 	/** Protocol preference order, passed through to getBestProtocol(). */
@@ -49,9 +59,9 @@ export interface AuthorizationRequestOptions extends RequestCredentialOptions {
 export async function buildRequestData(
 	protocol: OID4VPProtocol | string,
 	authorizationRequestUri: string,
-	options?: { fetchFn?: typeof fetch },
+	options?: BuildRequestDataOptions,
 ): Promise<Record<string, unknown>> {
-	const fetchImpl = options?.fetchFn ?? fetch;
+	const doFetch = boundFetch(options);
 	const url = new URL(authorizationRequestUri);
 	const params = url.searchParams;
 
@@ -59,7 +69,7 @@ export async function buildRequestData(
 	const requestUri = params.get('request_uri');
 
 	if (protocol === OID4VP_PROTOCOLS.SIGNED || protocol === OID4VP_PROTOCOLS.MULTISIGNED) {
-		const jwt = inlineRequest ?? (requestUri ? await _fetchJwt(requestUri, fetchImpl) : null);
+		const jwt = inlineRequest ?? (requestUri ? await _fetchJwt(requestUri, doFetch) : null);
 		if (!jwt) {
 			throw new Error(
 				`Cannot build ${protocol} request data: authorization request has neither 'request' nor 'request_uri'`,
@@ -75,7 +85,7 @@ export async function buildRequestData(
 		return _decodeJwtPayload(inlineRequest);
 	}
 	if (requestUri) {
-		const jwt = await _fetchJwt(requestUri, fetchImpl);
+		const jwt = await _fetchJwt(requestUri, doFetch);
 		return _decodeJwtPayload(jwt);
 	}
 
@@ -91,8 +101,8 @@ export async function buildRequestData(
 	return data;
 }
 
-async function _fetchJwt(requestUri: string, fetchImpl: typeof fetch): Promise<string> {
-	const res = await fetchImpl(requestUri);
+async function _fetchJwt(requestUri: string, doFetch: BoundFetch): Promise<string> {
+	const res = await doFetch(requestUri);
 	if (!res.ok) {
 		throw new Error(`Failed to fetch request_uri ${requestUri}: HTTP ${res.status}`);
 	}
@@ -132,6 +142,10 @@ export async function requestCredentialFromAuthorizationRequestURI(
 	const protocol = getBestProtocol(options?.protocolPreference);
 	if (!protocol) return null;
 
-	const data = await buildRequestData(protocol, authorizationRequestUri, { fetchFn: options?.fetchFn });
+	// Pass the options object through rather than picking keys out of it:
+	// hand-picking `fetchFn` alone is exactly how `signal` came to be
+	// honoured for the DC API call but not for this fetch, and it would drop
+	// the next option added here too.
+	const data = await buildRequestData(protocol, authorizationRequestUri, options);
 	return requestCredential(protocol, data, options);
 }

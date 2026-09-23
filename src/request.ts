@@ -86,8 +86,11 @@ export async function requestCredential(
 
 /**
  * Normalize a Credential into our standard response shape.
+ *
+ * @internal Shared with issue.ts so the get() and create() paths cannot
+ * drift apart. Not re-exported from index.ts.
  */
-function normalizeCredential(
+export function normalizeCredential(
 	credential: Credential,
 	fallbackProtocol: string,
 ): DigitalCredentialResponse {

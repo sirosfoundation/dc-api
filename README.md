@@ -6,13 +6,14 @@
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/sirosfoundation/dc-api/badge)](https://scorecard.dev/viewer/?uri=github.com/sirosfoundation/dc-api)
 [![License: BSD-2-Clause](https://img.shields.io/badge/License-BSD--2--Clause-blue.svg)](https://opensource.org/licenses/BSD-2-Clause)
 
-W3C Digital Credentials API toolkit for OpenID4VP.
+W3C Digital Credentials API toolkit for OpenID4VP and OpenID4VCI.
 
 Zero-dependency, backend-agnostic library providing:
 
 - **Protocol constants** — versioned OpenID4VP protocol identifiers per the W3C DC API spec
 - **Feature detection** — check DC API availability and protocol support
 - **Native DC API invocation** — call `navigator.credentials.get()` with proper parameters
+- **OID4VCI issuance** — call `navigator.credentials.create()`, with a credential-offer bridge and an honest availability check
 - **Error helpers** — classify errors and generate user-friendly messages
 - **Protocol polyfill** — shim OpenID4VP support in browsers lacking native protocol handling
 - **Web wallet support** — enable web wallets to self-register without a browser extension
@@ -27,6 +28,8 @@ Zero-dependency, backend-agnostic library providing:
 | `@sirosfoundation/dc-api/bundle` | Pre-built ESM bundle of core (for importmaps) |
 | `@sirosfoundation/dc-api/polyfill/bundle` | Pre-built ESM bundle of polyfill |
 | `@sirosfoundation/dc-api/web-wallets/bundle` | Pre-built ESM bundle of web-wallets |
+| `@sirosfoundation/dc-api/full` | Polyfill **and** web-wallets in one module instance |
+| `@sirosfoundation/dc-api/full/bundle` | Pre-built ESM bundle of both (use this when vendoring) |
 
 ## Install
 
@@ -66,6 +69,27 @@ if (protocol) {
 }
 ```
 
+### Core: Issuing credentials into a wallet
+
+```ts
+import { isIssuanceAvailable, issueCredentialFromOffer } from '@sirosfoundation/dc-api';
+
+// "Can this be fulfilled right now?" — true for a native user agent that
+// allows openid4vci-v1, OR a wallet registered with the polyfill.
+if (isIssuanceAvailable()) {
+  // Accepts an `openid-credential-offer://?credential_offer=...` URI,
+  // the `credential_offer_uri=...` by-reference form, a bare query
+  // string, or an already-parsed offer object.
+  const result = await issueCredentialFromOffer(credentialOfferUri);
+  if (!result) showCredentialOfferQRCode(credentialOfferUri);
+} else {
+  showCredentialOfferQRCode(credentialOfferUri); // cross-device fallback
+}
+```
+
+The same offer the issuer already renders as a QR code drives the DC API
+button — no `navigator.credentials` reference in the issuer page.
+
 ### Polyfill: OpenID4VP on browsers without native support
 
 ```ts
@@ -85,8 +109,7 @@ Wallets are registered separately — either by the verifier (see below) or via 
 ### Web Wallets: Self-registration without an extension
 
 ```ts
-import { installPolyfill } from '@sirosfoundation/dc-api/polyfill';
-import { enableWebWallets } from '@sirosfoundation/dc-api/web-wallets';
+import { installPolyfill, enableWebWallets } from '@sirosfoundation/dc-api/full';
 
 installPolyfill();
 enableWebWallets();
@@ -100,6 +123,16 @@ window.DigitalWallets.register({
   icon: 'https://wallet.example.com/icon.svg',
 });
 ```
+
+> **Use `/full` when you need both halves — and always when vendoring the
+> pre-built bundles.** `./polyfill` and `./web-wallets` are separate,
+> self-contained bundles that each inline their own copy of the polyfill, so
+> loading both as raw JS gives you two wallet registries and two `create()`
+> shims: a wallet registered through one bundle's `window.DigitalWallets` is
+> invisible to the other's `navigator.credentials.create()`, and issuance
+> rejects with `NotAllowedError` even though a provider is present. Importing
+> `./polyfill` and `./web-wallets` through a bundler is fine — those resolve
+> to the tsc outputs and share one instance.
 
 If the [wallet-companion](https://github.com/sirosfoundation/wallet-companion) browser extension is already installed, `enableWebWallets()` is a no-op.
 
@@ -116,6 +149,9 @@ OID4VP_PROTOCOLS.LEGACY       // "openid4vp"
 OID4VP_SPEC_PROTOCOLS         // [UNSIGNED, SIGNED, MULTISIGNED]
 OID4VP_ALL_PROTOCOLS          // [UNSIGNED, SIGNED, MULTISIGNED, LEGACY]
 isOID4VPProtocol(value)       // Type guard
+
+OID4VCI_PROTOCOLS.V1          // "openid4vci-v1"
+isOID4VCIProtocol(value)      // Type guard
 ```
 
 ### Detection
@@ -125,12 +161,27 @@ isOID4VPProtocol(value)       // Type guard
 | `isDCAPIAvailable()` | `true` when `DigitalCredential` is defined |
 | `isProtocolAllowed(protocol)` | Delegates to `DigitalCredential.userAgentAllowsProtocol()` |
 | `getBestProtocol(preference?)` | First allowed protocol (default: signed > multisigned > unsigned) |
+| `isIssuanceAvailable(protocol?)` | `true` when issuance can actually be fulfilled — natively **or** by a registered wallet (default: `openid4vci-v1`) |
 
 ### Request
 
 | Function | Description |
 |---|---|
 | `requestCredential(protocol, data, options?)` | Native DC API call, returns `{ protocol, data }` |
+| `buildRequestData(protocol, authorizationRequestUri, options?)` | Derive the request `data` from an OpenID4VP authorization request URI |
+| `requestCredentialFromAuthorizationRequestURI(uri, options?)` | Detect, build, and invoke in one call; `null` when unsupported |
+
+### Issuance
+
+| Function | Description |
+|---|---|
+| `issueCredential(protocol, data, options?)` | `navigator.credentials.create()`, returns `{ protocol, data }` |
+| `buildIssuanceRequestData(offer, options?)` | Unwrap a credential offer (by value, by reference, bare query string, or object) into the `openid4vci-v1` request `data` |
+| `issueCredentialFromOffer(offer, options?)` | Check availability, unwrap, and invoke in one call; `null` when issuance cannot be fulfilled |
+
+For `openid4vci-v1` the request `data` is the OpenID4VCI Credential Offer
+object itself — its parameters flat, **not** wrapped in a `credential_offer`
+member.
 
 ### Error Helpers
 
@@ -175,6 +226,7 @@ isOID4VPProtocol(value)       // Type guard
 
 - [W3C Digital Credentials API](https://w3c-fedid.github.io/digital-credentials/)
 - [OpenID4VP (DC API profile)](https://openid.net/specs/openid-4-verifiable-presentations-1_0.html)
+- [OpenID4VCI](https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html)
 - [DC API Ecosystem Support](https://digitalcredentials.dev/ecosystem-support)
 
 ## License

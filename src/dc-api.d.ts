@@ -24,3 +24,15 @@ interface CredentialRequestOptions {
 	digital?: DigitalCredentialRequestOptions;
 	signal?: AbortSignal;
 }
+
+interface DigitalCredentialCreationOptions {
+	requests: Array<{
+		protocol: string;
+		data: object;
+	}>;
+}
+
+interface CredentialCreationOptions {
+	digital?: DigitalCredentialCreationOptions;
+	signal?: AbortSignal;
+}

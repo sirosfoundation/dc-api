@@ -118,3 +118,72 @@ describe('requestCredentialFromAuthorizationRequestURI', () => {
 		expect(result).toEqual({ protocol: OID4VP_PROTOCOLS.SIGNED, data: { redirect_uri: 'https://example.com/cb' } });
 	});
 });
+
+// Regression for #22. AuthorizationRequestOptions accepts `signal` and it
+// reached requestCredential(), but buildRequestData() was called with only
+// `fetchFn` picked out of it, so the request_uri fetch - the FIRST thing that
+// happens for a JAR request, and the common case - was never abortable.
+describe('signal threading into the request_uri fetch', () => {
+	const uri =
+		'openid4vp://cb?client_id=x&request_uri=https%3A%2F%2Fverifier.example%2Frequest-object%3Fid%3D1';
+
+	it('passes the signal to the request_uri fetch', async () => {
+		const controller = new AbortController();
+		const fetchFn = vi.fn(async () => new Response(makeJwt({ nonce: 'abc' }), { status: 200 }));
+
+		await buildRequestData(OID4VP_PROTOCOLS.SIGNED, uri, {
+			fetchFn,
+			signal: controller.signal,
+		});
+
+		expect(fetchFn).toHaveBeenCalledWith('https://verifier.example/request-object?id=1', {
+			signal: controller.signal,
+		});
+	});
+
+	it('aborts a request_uri fetch that is already in flight', async () => {
+		const controller = new AbortController();
+
+		// A fetch that only ever settles by being aborted - i.e. exactly the
+		// window the old code could not interrupt.
+		const fetchFn = vi.fn(
+			(_url: string, init?: RequestInit) =>
+				new Promise<Response>((_resolve, reject) => {
+					init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), {
+						once: true,
+					});
+				}),
+		) as unknown as typeof fetch;
+
+		const pending = buildRequestData(OID4VP_PROTOCOLS.SIGNED, uri, {
+			fetchFn,
+			signal: controller.signal,
+		});
+
+		controller.abort();
+
+		await expect(pending).rejects.toThrow(/abort/i);
+	});
+
+	// The UNSIGNED path fetches request_uri too, and the first cut of the #22
+	// fix only threaded the signal through the SIGNED/MULTISIGNED branch.
+	it('passes the signal on the unsigned request_uri path as well', async () => {
+		const controller = new AbortController();
+		const fetchFn = vi.fn(async () => new Response(makeJwt({ nonce: 'abc' }), { status: 200 }));
+
+		await buildRequestData(OID4VP_PROTOCOLS.UNSIGNED, uri, {
+			fetchFn,
+			signal: controller.signal,
+		});
+
+		expect(fetchFn).toHaveBeenCalledWith('https://verifier.example/request-object?id=1', {
+			signal: controller.signal,
+		});
+	});
+
+	it('still calls fetch with a single argument when no signal is given', async () => {
+		const fetchFn = vi.fn(async () => new Response(makeJwt({ nonce: 'abc' }), { status: 200 }));
+		await buildRequestData(OID4VP_PROTOCOLS.SIGNED, uri, { fetchFn });
+		expect(fetchFn).toHaveBeenCalledWith('https://verifier.example/request-object?id=1');
+	});
+});
