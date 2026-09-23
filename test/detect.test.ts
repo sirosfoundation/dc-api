@@ -1,5 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { isDCAPIAvailable, isProtocolAllowed, getBestProtocol } from '../src/detect.js';
+import {
+	isDCAPIAvailable,
+	isProtocolAllowed,
+	getBestProtocol,
+	isIssuanceAvailable,
+} from '../src/detect.js';
+import { enableWebWallets, disableWebWallets } from '../src/web-wallets.js';
+import { registerWallet, getRegisteredWallets, unregisterWallet } from '../src/polyfill.js';
+import { OID4VCI_PROTOCOLS } from '../src/protocols.js';
 
 describe('isDCAPIAvailable', () => {
 	afterEach(() => {
@@ -95,5 +103,107 @@ describe('getBestProtocol', () => {
 		expect(getBestProtocol(['openid4vp-v1-unsigned', 'openid4vp-v1-signed'])).toBe(
 			'openid4vp-v1-unsigned',
 		);
+	});
+});
+
+describe('isIssuanceAvailable', () => {
+	afterEach(() => {
+		// @ts-expect-error — cleaning up global stub
+		delete globalThis.DigitalCredential;
+		// @ts-expect-error — cleaning up global stub
+		delete globalThis.DigitalWallets;
+		// @ts-expect-error — cleaning up global stub
+		delete globalThis.WalletCompanion;
+		disableWebWallets();
+		for (const w of getRegisteredWallets()) unregisterWallet(w.id);
+	});
+
+	it('returns false when no DC API and no wallet registry are present', () => {
+		expect(isIssuanceAvailable()).toBe(false);
+	});
+
+	it('does not throw when navigator and window are absent', () => {
+		expect(() => isIssuanceAvailable()).not.toThrow();
+	});
+
+	it('defaults to openid4vci-v1', () => {
+		const mock = vi.fn((p: string) => p === OID4VCI_PROTOCOLS.V1);
+		// @ts-expect-error — stubbing global
+		globalThis.DigitalCredential = { userAgentAllowsProtocol: mock };
+
+		expect(isIssuanceAvailable()).toBe(true);
+		expect(mock).toHaveBeenCalledWith('openid4vci-v1');
+	});
+
+	it('returns true when the native user agent allows the protocol', () => {
+		// @ts-expect-error — stubbing global
+		globalThis.DigitalCredential = { userAgentAllowsProtocol: () => true };
+		expect(isIssuanceAvailable('openid4vci-v1')).toBe(true);
+	});
+
+	it('returns false when the native user agent allows a different protocol only', () => {
+		// @ts-expect-error — stubbing global
+		globalThis.DigitalCredential = {
+			userAgentAllowsProtocol: (p: string) => p === 'openid4vp-v1-signed',
+		};
+		expect(isIssuanceAvailable()).toBe(false);
+	});
+
+	it('returns true for a polyfill-registered wallet with no native DC API', () => {
+		enableWebWallets();
+		registerWallet({
+			id: 'w',
+			name: 'Web Wallet',
+			url: 'https://wallet.example/dc-api',
+			protocols: [OID4VCI_PROTOCOLS.V1],
+		});
+
+		expect(isDCAPIAvailable()).toBe(false);
+		expect(isProtocolAllowed(OID4VCI_PROTOCOLS.V1)).toBe(false);
+		expect(isIssuanceAvailable()).toBe(true);
+	});
+
+	it('returns false when the registered wallet supports presentation only', () => {
+		enableWebWallets();
+		registerWallet({
+			id: 'w',
+			name: 'Web Wallet',
+			url: 'https://wallet.example/dc-api',
+			protocols: ['openid4vp-v1-signed'],
+		});
+
+		expect(isIssuanceAvailable()).toBe(false);
+	});
+
+	it('consults the wallet-companion extension global too', () => {
+		// @ts-expect-error — stubbing the extension's page global
+		globalThis.WalletCompanion = { supportsProtocol: (p: string) => p === OID4VCI_PROTOCOLS.V1 };
+		expect(isIssuanceAvailable()).toBe(true);
+	});
+
+	it('returns false rather than throwing when a registry global throws', () => {
+		// @ts-expect-error — stubbing a hostile global
+		globalThis.DigitalWallets = {
+			supportsProtocol: () => {
+				throw new Error('boom');
+			},
+		};
+		expect(isIssuanceAvailable()).toBe(false);
+	});
+
+	it('returns false rather than throwing when userAgentAllowsProtocol throws', () => {
+		// @ts-expect-error — stubbing global
+		globalThis.DigitalCredential = {
+			userAgentAllowsProtocol: () => {
+				throw new Error('boom');
+			},
+		};
+		expect(isIssuanceAvailable()).toBe(false);
+	});
+
+	it('ignores a registry global that is not shaped like one', () => {
+		// @ts-expect-error — stubbing global
+		globalThis.DigitalWallets = { list: () => [] };
+		expect(isIssuanceAvailable()).toBe(false);
 	});
 });

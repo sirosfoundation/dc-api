@@ -7,6 +7,8 @@
  *   - Protocol constants (versioned OpenID4VP protocol identifiers)
  *   - DC API feature detection (API availability + protocol support)
  *   - Native DC API invocation with response normalization
+ *   - OID4VCI issuance via navigator.credentials.create(), including a
+ *     credential-offer bridge and an issuance availability predicate
  *   - OpenID4VP response extraction (dc_api/dc_api.jwt response modes)
  *   - Error classification helpers
  *
@@ -18,6 +20,7 @@
  * References:
  *   - W3C Digital Credentials API: https://w3c-fedid.github.io/digital-credentials/
  *   - OpenID4VP (DC API profile): https://openid.net/specs/openid-4-verifiable-presentations-1_0.html
+ *   - OpenID4VCI: https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html
  */
 
 export {
@@ -34,12 +37,23 @@ export {
 	isDCAPIAvailable,
 	isProtocolAllowed,
 	getBestProtocol,
+	isIssuanceAvailable,
 } from './detect.js';
 export {
 	requestCredential,
 	type DigitalCredentialResponse,
 	type RequestCredentialOptions,
 } from './request.js';
+export {
+	issueCredential,
+	type IssueCredentialOptions,
+} from './issue.js';
+export {
+	buildIssuanceRequestData,
+	issueCredentialFromOffer,
+	type CredentialOffer,
+	type CredentialOfferOptions,
+} from './credential-offer.js';
 export {
 	buildRequestData,
 	requestCredentialFromAuthorizationRequestURI,
