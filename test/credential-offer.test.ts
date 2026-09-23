@@ -200,3 +200,60 @@ describe('issueCredentialFromOffer', () => {
 		);
 	});
 });
+
+describe('buildIssuanceRequestData — credential_configuration_ids validation', () => {
+	it('throws when credential_configuration_ids is empty', async () => {
+		await expect(
+			buildIssuanceRequestData(
+				byValueUri({ credential_issuer: 'https://issuer.example', credential_configuration_ids: [] }),
+			),
+		).rejects.toThrow(/non-empty array of non-empty strings/);
+	});
+
+	it('throws when credential_configuration_ids holds a non-string entry', async () => {
+		await expect(
+			buildIssuanceRequestData(
+				byValueUri({
+					credential_issuer: 'https://issuer.example',
+					credential_configuration_ids: ['ok', 42],
+				}),
+			),
+		).rejects.toThrow(/non-empty array of non-empty strings/);
+	});
+
+	it('throws when credential_configuration_ids holds an empty string', async () => {
+		await expect(
+			buildIssuanceRequestData(
+				byValueUri({
+					credential_issuer: 'https://issuer.example',
+					credential_configuration_ids: [''],
+				}),
+			),
+		).rejects.toThrow(/non-empty array of non-empty strings/);
+	});
+
+	it('throws when credential_issuer is an empty string', async () => {
+		await expect(
+			buildIssuanceRequestData(
+				byValueUri({ credential_issuer: '', credential_configuration_ids: ['x'] }),
+			),
+		).rejects.toThrow(/missing required 'credential_issuer'/);
+	});
+
+	it('accepts a caller-declared interface without a cast', async () => {
+		interface TypedOffer {
+			credential_issuer: string;
+			credential_configuration_ids: string[];
+		}
+		const typed: TypedOffer = {
+			credential_issuer: 'https://issuer.example',
+			credential_configuration_ids: ['org.iso.18013.5.1.mDL'],
+		};
+
+		// Compiles only because CredentialOffer accepts `object`, not
+		// Record<string, unknown> — an interface has no index signature.
+		// npm run lint excludes test/, so this half is proven by running tsc
+		// over src + test: reverting the type fails with TS2345.
+		expect(await buildIssuanceRequestData(typed)).toEqual(typed);
+	});
+});

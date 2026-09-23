@@ -40,8 +40,14 @@ export interface CredentialOfferOptions extends IssueCredentialOptions {
  * A credential offer in any of the forms this module accepts:
  * an `openid-credential-offer://` URI, a bare query string, or an
  * already-parsed offer object.
+ *
+ * Deliberately `object` rather than `Record<string, unknown>`: a caller's own
+ * `interface CredentialOffer { credential_issuer: string; ... }` does not
+ * satisfy a string index signature without a cast, and there is no reason to
+ * make callers cast a well-typed offer. The shape is narrowed at runtime by
+ * _assertOffer instead.
  */
-export type CredentialOffer = string | Record<string, unknown>;
+export type CredentialOffer = string | object;
 
 // ─── Offer parsing ───────────────────────────────────────────────────────────
 
@@ -70,9 +76,10 @@ function _parseOfferJson(json: string): unknown {
  * Reject anything that is not recognisably an OpenID4VCI Credential Offer.
  *
  * `credential_issuer` and `credential_configuration_ids` are both REQUIRED by
- * OpenID4VCI 1.0 §4.1.1; without them there is nothing a wallet could act on,
- * and handing the browser a malformed payload turns a clear error here into
- * an opaque one from the platform.
+ * OpenID4VCI 1.0 §4.1.1, and the latter is a non-empty array of strings naming
+ * the configurations on offer; without them there is nothing a wallet could
+ * act on, and handing the browser a malformed payload turns a clear error here
+ * into an opaque one from the platform.
  */
 function _assertOffer(value: unknown): Record<string, unknown> {
 	if (typeof value !== 'object' || value === null || Array.isArray(value)) {
@@ -84,6 +91,15 @@ function _assertOffer(value: unknown): Record<string, unknown> {
 	}
 	if (!Array.isArray(offer.credential_configuration_ids)) {
 		throw new TypeError("Malformed credential offer: missing required 'credential_configuration_ids'");
+	}
+	if (
+		offer.credential_configuration_ids.length === 0 ||
+		!offer.credential_configuration_ids.every((id) => typeof id === 'string' && id !== '')
+	) {
+		throw new TypeError(
+			"Malformed credential offer: 'credential_configuration_ids' must be a non-empty array of " +
+			'non-empty strings',
+		);
 	}
 	return offer;
 }
