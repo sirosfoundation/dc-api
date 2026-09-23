@@ -16,7 +16,6 @@
 
 import {
 	OID4VP_PROTOCOLS,
-	OID4VP_SPEC_PROTOCOLS,
 	OID4VCI_PROTOCOLS,
 	type OID4VPProtocol,
 } from './protocols.js';
