@@ -1,6 +1,6 @@
 {
   "name": "@sirosfoundation/dc-api",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "W3C Digital Credentials API utilities for OpenID4VP — detection, protocol constants, and native DC API invocation",
   "type": "module",
   "main": "dist/index.js",
@@ -26,6 +26,13 @@
     },
     "./web-wallets/bundle": {
       "import": "./dist/dc-api-web-wallets.bundle.js"
+    },
+    "./full": {
+      "import": "./dist/full.js",
+      "types": "./dist/full.d.ts"
+    },
+    "./full/bundle": {
+      "import": "./dist/dc-api-full.bundle.js"
     }
   },
   "files": [
@@ -33,7 +40,7 @@
   ],
   "scripts": {
     "build": "tsc && npm run bundle",
-    "bundle": "esbuild src/index.ts --bundle --format=esm --target=es2022 --outfile=dist/dc-api.bundle.js && esbuild src/polyfill.ts --bundle --format=esm --target=es2022 --outfile=dist/dc-api-polyfill.bundle.js && esbuild src/web-wallets.ts --bundle --format=esm --target=es2022 --outfile=dist/dc-api-web-wallets.bundle.js",
+    "bundle": "esbuild src/index.ts --bundle --format=esm --target=es2022 --outfile=dist/dc-api.bundle.js && esbuild src/polyfill.ts --bundle --format=esm --target=es2022 --outfile=dist/dc-api-polyfill.bundle.js && esbuild src/web-wallets.ts --bundle --format=esm --target=es2022 --outfile=dist/dc-api-web-wallets.bundle.js && esbuild src/full.ts --bundle --format=esm --target=es2022 --outfile=dist/dc-api-full.bundle.js",
     "prepare": "npm run build",
     "test": "vitest run",
     "test:watch": "vitest",

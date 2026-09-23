@@ -28,6 +28,8 @@ Zero-dependency, backend-agnostic library providing:
 | `@sirosfoundation/dc-api/bundle` | Pre-built ESM bundle of core (for importmaps) |
 | `@sirosfoundation/dc-api/polyfill/bundle` | Pre-built ESM bundle of polyfill |
 | `@sirosfoundation/dc-api/web-wallets/bundle` | Pre-built ESM bundle of web-wallets |
+| `@sirosfoundation/dc-api/full` | Polyfill **and** web-wallets in one module instance |
+| `@sirosfoundation/dc-api/full/bundle` | Pre-built ESM bundle of both (use this when vendoring) |
 
 ## Install
 
@@ -107,8 +109,7 @@ Wallets are registered separately — either by the verifier (see below) or via 
 ### Web Wallets: Self-registration without an extension
 
 ```ts
-import { installPolyfill } from '@sirosfoundation/dc-api/polyfill';
-import { enableWebWallets } from '@sirosfoundation/dc-api/web-wallets';
+import { installPolyfill, enableWebWallets } from '@sirosfoundation/dc-api/full';
 
 installPolyfill();
 enableWebWallets();
@@ -122,6 +123,16 @@ window.DigitalWallets.register({
   icon: 'https://wallet.example.com/icon.svg',
 });
 ```
+
+> **Use `/full` when you need both halves — and always when vendoring the
+> pre-built bundles.** `./polyfill` and `./web-wallets` are separate,
+> self-contained bundles that each inline their own copy of the polyfill, so
+> loading both as raw JS gives you two wallet registries and two `create()`
+> shims: a wallet registered through one bundle's `window.DigitalWallets` is
+> invisible to the other's `navigator.credentials.create()`, and issuance
+> rejects with `NotAllowedError` even though a provider is present. Importing
+> `./polyfill` and `./web-wallets` through a bundler is fine — those resolve
+> to the tsc outputs and share one instance.
 
 If the [wallet-companion](https://github.com/sirosfoundation/wallet-companion) browser extension is already installed, `enableWebWallets()` is a no-op.
 

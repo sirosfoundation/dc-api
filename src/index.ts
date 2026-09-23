@@ -58,6 +58,7 @@ export {
 	buildRequestData,
 	requestCredentialFromAuthorizationRequestURI,
 	type AuthorizationRequestOptions,
+	type BuildRequestDataOptions,
 } from './authorization-request.js';
 export {
 	extractOID4VPResponse,

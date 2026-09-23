@@ -140,3 +140,73 @@ describe('dist/dc-api.bundle.js', () => {
 		expect(source).not.toContain('_invokeWalletPopup');
 	});
 });
+
+// Regression for #23. dc-api-polyfill.bundle.js and
+// dc-api-web-wallets.bundle.js are each self-contained: both inline their own
+// copy of polyfill.ts, so a page loading both gets two wallet registries and
+// two create() shims. A wallet registered through one bundle's
+// window.DigitalWallets was invisible to the other bundle's
+// navigator.credentials.create(), and issuance rejected with NotAllowedError
+// with a provider sitting right there. dc-api-full.bundle.js is the fix: one
+// module instance carrying both halves.
+describe('dist/dc-api-full.bundle.js', () => {
+	const wallet = {
+		id: 'w',
+		name: 'W',
+		url: 'https://wallet.example.com/dc-api',
+		protocols: ['openid4vci-v1'],
+	};
+
+	it('shares one registry between the polyfill and window.DigitalWallets', async () => {
+		const mod = await import(bundleUrl('dc-api-full.bundle.js'));
+
+		mod.installPolyfill();
+		mod.enableWebWallets();
+
+		// Registered through the page-facing API...
+		globalThis.window.DigitalWallets.register(wallet);
+
+		// ...and visible to the create() shim's own registry. This is the
+		// assertion the split bundles fail.
+		expect(mod.getRegisteredWallets().map((w: { id: string }) => w.id)).toContain('w');
+		expect(DigitalCredential.userAgentAllowsProtocol('openid4vci-v1')).toBe(true);
+
+		mod.disableWebWallets();
+		mod.uninstallPolyfill();
+	});
+
+	it('unregisters through either half', async () => {
+		const mod = await import(bundleUrl('dc-api-full.bundle.js'));
+
+		mod.installPolyfill();
+		mod.enableWebWallets();
+		globalThis.window.DigitalWallets.register(wallet);
+		expect(globalThis.window.DigitalWallets.supportsProtocol('openid4vci-v1')).toBe(true);
+
+		mod.unregisterWallet('w');
+		expect(globalThis.window.DigitalWallets.supportsProtocol('openid4vci-v1')).toBe(false);
+
+		mod.disableWebWallets();
+		mod.uninstallPolyfill();
+	});
+
+	// The defect this entry point exists for, pinned so nobody "simplifies"
+	// the full bundle back into loading the two separate ones.
+	it('is needed: the separate bundles do NOT share a registry', async () => {
+		const polyfill = await import(bundleUrl('dc-api-polyfill.bundle.js'));
+		const webWallets = await import(bundleUrl('dc-api-web-wallets.bundle.js'));
+
+		polyfill.installPolyfill();
+		webWallets.enableWebWallets();
+
+		globalThis.window.DigitalWallets.register(wallet);
+
+		// web-wallets' own inlined polyfill copy took the registration...
+		expect(globalThis.window.DigitalWallets.supportsProtocol('openid4vci-v1')).toBe(true);
+		// ...while the polyfill bundle that actually shimmed create() saw nothing.
+		expect(polyfill.getRegisteredWallets()).toHaveLength(0);
+
+		webWallets.disableWebWallets();
+		polyfill.uninstallPolyfill();
+	});
+});
