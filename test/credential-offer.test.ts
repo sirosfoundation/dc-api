@@ -278,3 +278,63 @@ describe('buildIssuanceRequestData — parameter presence, not truthiness', () =
 		expect(fetchFn).not.toHaveBeenCalled();
 	});
 });
+
+// Same defect as #22, in the sibling module: CredentialOfferOptions inherits
+// `signal`, but the call into buildIssuanceRequestData hand-picked `fetchFn`,
+// so a credential_offer_uri fetch could not be aborted. Both now travel as
+// one bound value (src/fetcher.ts), so there is nothing left to pick.
+describe('signal threading into the credential_offer_uri fetch', () => {
+	const offerUri = 'openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fissuer.example%2Foffer%2F1';
+
+	it('passes the signal to the offer fetch', async () => {
+		const controller = new AbortController();
+		const fetchFn = vi.fn(
+			async () =>
+				new Response(
+					JSON.stringify({
+						credential_issuer: 'https://issuer.example',
+						credential_configuration_ids: ['x'],
+					}),
+					{ status: 200 },
+				),
+		);
+
+		await buildIssuanceRequestData(offerUri, { fetchFn, signal: controller.signal });
+
+		expect(fetchFn).toHaveBeenCalledWith('https://issuer.example/offer/1', {
+			signal: controller.signal,
+		});
+	});
+
+	it('aborts an offer fetch that is already in flight', async () => {
+		const controller = new AbortController();
+		const fetchFn = vi.fn(
+			(_url: string, init?: RequestInit) =>
+				new Promise<Response>((_resolve, reject) => {
+					init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), {
+						once: true,
+					});
+				}),
+		) as unknown as typeof fetch;
+
+		const pending = buildIssuanceRequestData(offerUri, { fetchFn, signal: controller.signal });
+		controller.abort();
+
+		await expect(pending).rejects.toThrow(/abort/i);
+	});
+
+	it('still calls fetch with a single argument when no signal is given', async () => {
+		const fetchFn = vi.fn(
+			async () =>
+				new Response(
+					JSON.stringify({
+						credential_issuer: 'https://issuer.example',
+						credential_configuration_ids: ['x'],
+					}),
+					{ status: 200 },
+				),
+		);
+		await buildIssuanceRequestData(offerUri, { fetchFn });
+		expect(fetchFn).toHaveBeenCalledWith('https://issuer.example/offer/1');
+	});
+});

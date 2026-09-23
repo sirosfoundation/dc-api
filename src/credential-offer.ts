@@ -23,6 +23,7 @@
 import { isIssuanceAvailable } from './detect.js';
 import { issueCredential, type IssueCredentialOptions } from './issue.js';
 import { OID4VCI_PROTOCOLS, type OID4VCIProtocol } from './protocols.js';
+import { boundFetch, type BoundFetch, type FetchOptions } from './fetcher.js';
 import type { DigitalCredentialResponse } from './request.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -104,8 +105,8 @@ function _assertOffer(value: unknown): Record<string, unknown> {
 	return offer;
 }
 
-async function _fetchOffer(offerUri: string, fetchImpl: typeof fetch): Promise<unknown> {
-	const res = await fetchImpl(offerUri);
+async function _fetchOffer(offerUri: string, doFetch: BoundFetch): Promise<unknown> {
+	const res = await doFetch(offerUri);
 	if (!res.ok) {
 		throw new Error(`Failed to fetch credential_offer_uri ${offerUri}: HTTP ${res.status}`);
 	}
@@ -153,7 +154,7 @@ async function _fetchOffer(offerUri: string, fetchImpl: typeof fetch): Promise<u
  */
 export async function buildIssuanceRequestData(
 	offer: CredentialOffer,
-	options?: { fetchFn?: typeof fetch },
+	options?: FetchOptions,
 ): Promise<Record<string, unknown>> {
 	if (typeof offer === 'object' && offer !== null) {
 		return _assertOffer(offer);
@@ -184,8 +185,7 @@ export async function buildIssuanceRequestData(
 		if (byReference === '') {
 			throw new TypeError("Malformed credential offer: 'credential_offer_uri' is empty");
 		}
-		const fetchImpl = options?.fetchFn ?? fetch;
-		return _assertOffer(await _fetchOffer(byReference, fetchImpl));
+		return _assertOffer(await _fetchOffer(byReference, boundFetch(options)));
 	}
 
 	throw new TypeError(
@@ -220,6 +220,9 @@ export async function issueCredentialFromOffer(
 	const protocol = options?.protocol ?? OID4VCI_PROTOCOLS.V1;
 	if (!isIssuanceAvailable(protocol)) return null;
 
-	const data = await buildIssuanceRequestData(offer, { fetchFn: options?.fetchFn });
+	// Pass the options object through rather than picking keys out of it -
+	// see fetcher.ts. Hand-picking fetchFn here is how the caller's signal
+	// stopped applying to the credential_offer_uri fetch.
+	const data = await buildIssuanceRequestData(offer, options);
 	return issueCredential(protocol, data, options);
 }

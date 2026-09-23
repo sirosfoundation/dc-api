@@ -17,6 +17,7 @@
 import { getBestProtocol } from './detect.js';
 import { requestCredential, type DigitalCredentialResponse, type RequestCredentialOptions } from './request.js';
 import { OID4VP_PROTOCOLS, type OID4VPProtocol } from './protocols.js';
+import { boundFetch, type BoundFetch, type FetchOptions } from './fetcher.js';
 
 /**
  * Options for building request data, i.e. the half of an authorization
@@ -25,17 +26,7 @@ import { OID4VP_PROTOCOLS, type OID4VPProtocol } from './protocols.js';
  * `AuthorizationRequestOptions` is assignable to this, so callers pass their
  * whole options object straight through instead of copying fields across.
  */
-export interface BuildRequestDataOptions {
-	/** Override fetch (e.g. for testing, or a non-global fetch). */
-	fetchFn?: typeof fetch;
-	/**
-	 * Abort the `request_uri` fetch. For a SIGNED/MULTISIGNED request that
-	 * carries `request_uri` - the common JAR case - this fetch is the first
-	 * thing that happens, so without it an abort during that window has no
-	 * effect at all.
-	 */
-	signal?: AbortSignal;
-}
+export type BuildRequestDataOptions = FetchOptions;
 
 export interface AuthorizationRequestOptions extends RequestCredentialOptions {
 	/** Protocol preference order, passed through to getBestProtocol(). */
@@ -70,7 +61,7 @@ export async function buildRequestData(
 	authorizationRequestUri: string,
 	options?: BuildRequestDataOptions,
 ): Promise<Record<string, unknown>> {
-	const fetchImpl = options?.fetchFn ?? fetch;
+	const doFetch = boundFetch(options);
 	const url = new URL(authorizationRequestUri);
 	const params = url.searchParams;
 
@@ -78,7 +69,7 @@ export async function buildRequestData(
 	const requestUri = params.get('request_uri');
 
 	if (protocol === OID4VP_PROTOCOLS.SIGNED || protocol === OID4VP_PROTOCOLS.MULTISIGNED) {
-		const jwt = inlineRequest ?? (requestUri ? await _fetchJwt(requestUri, fetchImpl, options?.signal) : null);
+		const jwt = inlineRequest ?? (requestUri ? await _fetchJwt(requestUri, doFetch) : null);
 		if (!jwt) {
 			throw new Error(
 				`Cannot build ${protocol} request data: authorization request has neither 'request' nor 'request_uri'`,
@@ -94,7 +85,7 @@ export async function buildRequestData(
 		return _decodeJwtPayload(inlineRequest);
 	}
 	if (requestUri) {
-		const jwt = await _fetchJwt(requestUri, fetchImpl);
+		const jwt = await _fetchJwt(requestUri, doFetch);
 		return _decodeJwtPayload(jwt);
 	}
 
@@ -110,14 +101,8 @@ export async function buildRequestData(
 	return data;
 }
 
-async function _fetchJwt(
-	requestUri: string,
-	fetchImpl: typeof fetch,
-	signal?: AbortSignal,
-): Promise<string> {
-	// Only pass an init object when there is something to put in it, so a
-	// caller with no signal sees the same single-argument call as before.
-	const res = signal ? await fetchImpl(requestUri, { signal }) : await fetchImpl(requestUri);
+async function _fetchJwt(requestUri: string, doFetch: BoundFetch): Promise<string> {
+	const res = await doFetch(requestUri);
 	if (!res.ok) {
 		throw new Error(`Failed to fetch request_uri ${requestUri}: HTTP ${res.status}`);
 	}

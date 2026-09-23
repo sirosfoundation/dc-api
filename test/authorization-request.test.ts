@@ -165,6 +165,22 @@ describe('signal threading into the request_uri fetch', () => {
 		await expect(pending).rejects.toThrow(/abort/i);
 	});
 
+	// The UNSIGNED path fetches request_uri too, and the first cut of the #22
+	// fix only threaded the signal through the SIGNED/MULTISIGNED branch.
+	it('passes the signal on the unsigned request_uri path as well', async () => {
+		const controller = new AbortController();
+		const fetchFn = vi.fn(async () => new Response(makeJwt({ nonce: 'abc' }), { status: 200 }));
+
+		await buildRequestData(OID4VP_PROTOCOLS.UNSIGNED, uri, {
+			fetchFn,
+			signal: controller.signal,
+		});
+
+		expect(fetchFn).toHaveBeenCalledWith('https://verifier.example/request-object?id=1', {
+			signal: controller.signal,
+		});
+	});
+
 	it('still calls fetch with a single argument when no signal is given', async () => {
 		const fetchFn = vi.fn(async () => new Response(makeJwt({ nonce: 'abc' }), { status: 200 }));
 		await buildRequestData(OID4VP_PROTOCOLS.SIGNED, uri, { fetchFn });

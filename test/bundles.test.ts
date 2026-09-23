@@ -65,6 +65,53 @@ afterEach(() => {
 	}
 });
 
+
+/**
+ * Stand in for the browser bits _invokeWalletPopup needs: window.open, a
+ * message listener list, and a location. Returns a handle that lets a test
+ * deliver the wallet's response, so navigator.credentials.create() can be
+ * driven to completion without a browser.
+ */
+function installFakePopupWindow(): {
+	respond: (payload: unknown) => void;
+	fail: (error: string) => void;
+	opened: () => string | null;
+} {
+	const listeners: Array<(e: unknown) => void> = [];
+	let openedUrl: string | null = null;
+	let requestId: string | null = null;
+	const popup = { closed: false, close() { this.closed = true; }, postMessage() {} };
+
+	const win = globalThis as unknown as Record<string, unknown>;
+	win.location = { origin: 'https://verifier.example' };
+	win.open = (url: string) => {
+		openedUrl = url;
+		requestId = new URL(url).searchParams.get('request_id');
+		return popup;
+	};
+	win.addEventListener = (type: string, handler: (e: unknown) => void) => {
+		if (type === 'message') listeners.push(handler);
+	};
+	win.removeEventListener = (type: string, handler: (e: unknown) => void) => {
+		const i = listeners.indexOf(handler);
+		if (i >= 0) listeners.splice(i, 1);
+	};
+
+	function deliver(data: Record<string, unknown>) {
+		// Copy: cleanup() mutates the list while we iterate.
+		for (const h of [...listeners]) {
+			h({ source: popup, origin: 'https://wallet.example.com', data });
+		}
+	}
+
+	return {
+		opened: () => openedUrl,
+		respond: (response) =>
+			deliver({ type: 'WC_WALLET_RESPONSE', requestId, response }),
+		fail: (error) => deliver({ type: 'WC_WALLET_RESPONSE', requestId, error }),
+	};
+}
+
 describe('dist/dc-api-polyfill.bundle.js', () => {
 	it('installs without throwing on a reassigned module-level binding', async () => {
 		const mod = await import(bundleUrl('dc-api-polyfill.bundle.js'));
@@ -205,6 +252,81 @@ describe('dist/dc-api-full.bundle.js', () => {
 		expect(globalThis.window.DigitalWallets.supportsProtocol('openid4vci-v1')).toBe(true);
 		// ...while the polyfill bundle that actually shimmed create() saw nothing.
 		expect(polyfill.getRegisteredWallets()).toHaveLength(0);
+
+		webWallets.disableWebWallets();
+		polyfill.uninstallPolyfill();
+	});
+});
+
+// #23 is ultimately about whether create() REACHES the wallet, so assert that
+// directly rather than inferring it from the registry: a broken
+// _polyfillCreate or routing path would pass a registry-only check while the
+// advertised wallet stayed unusable.
+describe('dist/dc-api-full.bundle.js create() routing', () => {
+	const wallet = {
+		id: 'w',
+		name: 'W',
+		url: 'https://wallet.example.com/dc-api',
+		protocols: ['openid4vci-v1'],
+	};
+	const request = {
+		digital: { requests: [{ protocol: 'openid4vci-v1', data: { credential_issuer: 'https://issuer.example' } }] },
+	};
+
+	it('routes create() to a wallet registered through window.DigitalWallets', async () => {
+		const mod = await import(bundleUrl('dc-api-full.bundle.js'));
+		const popup = installFakePopupWindow();
+
+		mod.installPolyfill();
+		mod.enableWebWallets();
+		globalThis.window.DigitalWallets.register(wallet);
+
+		const pending = navigator.credentials.create(request);
+		// The popup must have been opened for THIS wallet.
+		expect(popup.opened()).toContain('https://wallet.example.com/dc-api');
+
+		popup.respond({ credential: 'issued' });
+		const credential = await pending;
+
+		expect(credential).toMatchObject({
+			protocol: 'openid4vci-v1',
+			data: { credential: 'issued' },
+		});
+
+		mod.disableWebWallets();
+		mod.uninstallPolyfill();
+	});
+
+	it('surfaces a wallet-reported error rather than resolving', async () => {
+		const mod = await import(bundleUrl('dc-api-full.bundle.js'));
+		const popup = installFakePopupWindow();
+
+		mod.installPolyfill();
+		mod.enableWebWallets();
+		globalThis.window.DigitalWallets.register(wallet);
+
+		const pending = navigator.credentials.create(request);
+		popup.fail('user refused');
+
+		await expect(pending).rejects.toThrow(/user refused/);
+
+		mod.disableWebWallets();
+		mod.uninstallPolyfill();
+	});
+
+	// The bug in one assertion: same registration, separate bundles, and
+	// create() cannot find the wallet that window.DigitalWallets reports.
+	it('is needed: with the separate bundles create() rejects despite a registered wallet', async () => {
+		const polyfill = await import(bundleUrl('dc-api-polyfill.bundle.js'));
+		const webWallets = await import(bundleUrl('dc-api-web-wallets.bundle.js'));
+		installFakePopupWindow();
+
+		polyfill.installPolyfill();
+		webWallets.enableWebWallets();
+		globalThis.window.DigitalWallets.register(wallet);
+
+		expect(globalThis.window.DigitalWallets.supportsProtocol('openid4vci-v1')).toBe(true);
+		await expect(navigator.credentials.create(request)).rejects.toThrow(/No digital credential provider/i);
 
 		webWallets.disableWebWallets();
 		polyfill.uninstallPolyfill();
