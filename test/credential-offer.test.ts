@@ -257,3 +257,24 @@ describe('buildIssuanceRequestData — credential_configuration_ids validation',
 		expect(await buildIssuanceRequestData(typed)).toEqual(typed);
 	});
 });
+
+describe('buildIssuanceRequestData — parameter presence, not truthiness', () => {
+	it('fails an empty credential_offer rather than falling back to credential_offer_uri', async () => {
+		const fetchFn = vi.fn(async () => new Response(JSON.stringify(OFFER), { status: 200 }));
+		const uri =
+			'openid-credential-offer://?credential_offer=' +
+			`&credential_offer_uri=${encodeURIComponent('https://issuer.example/offers/1')}`;
+
+		await expect(buildIssuanceRequestData(uri, { fetchFn })).rejects.toThrow(/not valid JSON/);
+		expect(fetchFn).not.toHaveBeenCalled();
+	});
+
+	it('fails an empty credential_offer_uri rather than reporting neither parameter', async () => {
+		const fetchFn = vi.fn(async () => new Response('{}', { status: 200 }));
+
+		await expect(
+			buildIssuanceRequestData('openid-credential-offer://?credential_offer_uri=', { fetchFn }),
+		).rejects.toThrow(/'credential_offer_uri' is empty/);
+		expect(fetchFn).not.toHaveBeenCalled();
+	});
+});

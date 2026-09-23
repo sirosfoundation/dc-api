@@ -108,6 +108,27 @@ interface _WalletRegistry {
 }
 
 /**
+ * Whether this context could actually run `navigator.credentials.create()` at
+ * all.
+ *
+ * Checked before either support signal is consulted: in an SSR render, a
+ * worker, or any context without a credentials container, a stale or injected
+ * `DigitalCredential` / wallet registry would otherwise make this predicate
+ * claim support that ends in a thrown `create()` rather than the QR fallback
+ * the caller wanted.
+ */
+function _canInvokeCreate(): boolean {
+	try {
+		return (
+			typeof navigator !== 'undefined' &&
+			typeof navigator.credentials?.create === 'function'
+		);
+	} catch {
+		return false;
+	}
+}
+
+/**
  * Whether any wallet registered with an installed polyfill/extension claims
  * the protocol. Never throws — an absent, half-installed or hostile global is
  * simply "no wallet".
@@ -144,8 +165,9 @@ function _registeredWalletSupports(protocol: string): boolean {
  * that allows nothing still works when the polyfill has a web wallet
  * registered.
  *
- * Never throws. Returns false when `navigator`, `window`, `DigitalCredential`
- * or the wallet registries are absent, and in every unknown case.
+ * Never throws. Returns false when there is no `navigator.credentials.create`
+ * to invoke in the first place (SSR, workers), when `DigitalCredential` and
+ * the wallet registries are absent, and in every unknown case.
  *
  * @param protocol  Issuance protocol identifier. Defaults to "openid4vci-v1".
  *
@@ -159,6 +181,8 @@ function _registeredWalletSupports(protocol: string): boolean {
  * ```
  */
 export function isIssuanceAvailable(protocol: string = OID4VCI_PROTOCOLS.V1): boolean {
+	if (!_canInvokeCreate()) return false;
+
 	try {
 		if (isProtocolAllowed(protocol) === true) return true;
 	} catch {

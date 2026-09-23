@@ -172,13 +172,18 @@ export async function buildIssuanceRequestData(
 
 	const params = _offerParams(trimmed);
 
-	const byValue = params.get('credential_offer');
-	if (byValue) {
-		return _assertOffer(_parseOfferJson(byValue));
+	// Presence, not truthiness: `credential_offer=` (present but empty) is a
+	// malformed by-value offer, not an absent one, and must fail validation
+	// rather than silently fall through to `credential_offer_uri`.
+	if (params.has('credential_offer')) {
+		return _assertOffer(_parseOfferJson(params.get('credential_offer') ?? ''));
 	}
 
-	const byReference = params.get('credential_offer_uri');
-	if (byReference) {
+	if (params.has('credential_offer_uri')) {
+		const byReference = params.get('credential_offer_uri') ?? '';
+		if (byReference === '') {
+			throw new TypeError("Malformed credential offer: 'credential_offer_uri' is empty");
+		}
 		const fetchImpl = options?.fetchFn ?? fetch;
 		return _assertOffer(await _fetchOffer(byReference, fetchImpl));
 	}

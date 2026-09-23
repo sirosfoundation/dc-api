@@ -107,6 +107,13 @@ describe('getBestProtocol', () => {
 });
 
 describe('isIssuanceAvailable', () => {
+	beforeEach(() => {
+		// navigator is getter-only in node — plain assignment fails, and
+		// vi.stubGlobal uses defineProperty. Issuance needs a credentials
+		// container to invoke at all.
+		vi.stubGlobal('navigator', { credentials: { create: vi.fn(), get: vi.fn() } });
+	});
+
 	afterEach(() => {
 		// @ts-expect-error — cleaning up global stub
 		delete globalThis.DigitalCredential;
@@ -116,6 +123,31 @@ describe('isIssuanceAvailable', () => {
 		delete globalThis.WalletCompanion;
 		disableWebWallets();
 		for (const w of getRegisteredWallets()) unregisterWallet(w.id);
+		vi.unstubAllGlobals();
+	});
+
+	it('returns false when navigator.credentials is absent, despite native support', () => {
+		vi.stubGlobal('navigator', {});
+		// @ts-expect-error — a stale/injected page global
+		globalThis.DigitalCredential = { userAgentAllowsProtocol: () => true };
+
+		expect(isIssuanceAvailable()).toBe(false);
+	});
+
+	it('returns false when navigator is absent entirely, despite a wallet registry', () => {
+		vi.stubGlobal('navigator', undefined);
+		// @ts-expect-error — a stale/injected page global
+		globalThis.DigitalWallets = { supportsProtocol: () => true };
+
+		expect(isIssuanceAvailable()).toBe(false);
+	});
+
+	it('returns false when navigator.credentials has no create()', () => {
+		vi.stubGlobal('navigator', { credentials: { get: vi.fn() } });
+		// @ts-expect-error — stubbing global
+		globalThis.DigitalCredential = { userAgentAllowsProtocol: () => true };
+
+		expect(isIssuanceAvailable()).toBe(false);
 	});
 
 	it('returns false when no DC API and no wallet registry are present', () => {
